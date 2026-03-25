@@ -1,6 +1,5 @@
 import pygame
 import time
-import math
 
 # --- 基础配置 ---
 WINDOW_WIDTH = 1000
@@ -36,7 +35,7 @@ class Effect:
     def __init__(self, x, y, color, is_square):
         self.x, self.y = x, y
         self.color = color
-        self.is_square = is_square # True 为 Perf/Good 复杂图形, False 为 Bad/Miss 矩形
+        self.is_square = is_square 
         self.timer = 0.15
 
 def generate_notes(mode, base_interval, delay):
@@ -45,6 +44,7 @@ def generate_notes(mode, base_interval, delay):
         for i in range(int(10 / base_interval)):
             notes.append(Note(delay + (i * base_interval), i % 2 == 0))
     else:
+        # 2s爆发 -> 1s休 -> 2s爆发 -> 1s休 -> 4s爆发
         timeline = [(0.0, 2.0, 0.5), (2.0, 3.0, None), (3.0, 5.0, 0.5), (5.0, 6.0, None), (6.0, 10.0, 0.5)]
         is_left = True
         for start, end, mult in timeline:
@@ -71,6 +71,7 @@ def main():
     # 状态变量
     scene = 0  # 0:主页, 1:选模式, 2:练习, 3:结算, 4:设置
     smart_line_enabled = True
+    is_dragging = False 
     current_line_color = COLOR_PERFECT
     
     interval = 0.2
@@ -87,31 +88,22 @@ def main():
     while running:
         current_time = time.time()
         elapsed = current_time - start_time if scene == 2 else 0
+        mx, my = pygame.mouse.get_pos()
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             
             if event.type == pygame.MOUSEBUTTONDOWN:
-                mx, my = pygame.mouse.get_pos()
-                
-                # 设置按钮 (齿轮) - 仅在主页可见
                 if scene == 0 and 20 < mx < 70 and 20 < my < 70:
                     scene = 4
-                
-                # 设置页面内的开关
+                elif scene in [0, 1] and 900 < mx < 980 and 200 < my < 500:
+                    is_dragging = True
                 elif scene == 4:
-                    if 450 < mx < 550 and 300 < my < 340: # 简化开关位置
+                    if 450 < mx < 550 and 300 < my < 340:
                         smart_line_enabled = not smart_line_enabled
-                    if 450 < mx < 550 and 500 < my < 550: # 返回按钮
+                    elif 450 < mx < 550 and 500 < my < 550:
                         scene = 0
-
-                # 滑轨调节 (场景0, 1)
-                elif scene in [0, 1] and 930 < mx < 940 and 200 < my < 500:
-                    ratio = 1.0 - (my - 200) / 300.0
-                    interval = max(0.05, min(0.5, 0.05 + ratio * 0.45))
-                
-                # 模式选择
                 elif scene == 1:
                     if 350 < mx < 650:
                         if 300 < my < 350: mode, scene = "normal", 2
@@ -122,7 +114,19 @@ def main():
                             stats, effects, combo, max_combo = {k: 0 for k in stats}, [], 0, 0
                             current_line_color = COLOR_PERFECT if smart_line_enabled else COLOR_WHITE
 
+            if event.type == pygame.MOUSEBUTTONUP:
+                is_dragging = False
+
             if event.type == pygame.KEYDOWN:
+                # --- 新增：主页面和选择页面使用方向键调整间隔 ---
+                if scene in [0, 1]:
+                    if event.key == pygame.K_UP:
+                        # 间隔变大（减慢速度），向上箭头对应滑块上移，数值增加
+                        interval = min(0.50, round(interval + 0.01, 2))
+                    elif event.key == pygame.K_DOWN:
+                        # 间隔变小（增加难度），向下箭头对应滑块下移，数值减少
+                        interval = max(0.05, round(interval - 0.01, 2))
+
                 if event.key == pygame.K_SPACE:
                     if scene == 0: scene = 1
                     elif scene == 1:
@@ -134,7 +138,6 @@ def main():
                     elif scene in [3, 4]: scene = 0
                     elif scene == 2: scene = 0
 
-                # 打击逻辑
                 if scene == 2 and event.key in [pygame.K_f, pygame.K_j]:
                     is_left_key = (event.key == pygame.K_f)
                     for n in notes:
@@ -154,18 +157,23 @@ def main():
                                 break
                             elif elapsed < n.target_time and diff <= 0.3:
                                 n.hit, stats["bad"] = True, stats["bad"] + 1
-                                combo = 0 # Bad 连击归零
+                                combo = 0
                                 if smart_line_enabled: current_line_color = COLOR_WHITE
                                 effects.append(Effect(n.x, (elapsed - n.spawn_time) * FALL_SPEED, COLOR_BAD, False))
                                 break
                     max_combo = max(max_combo, combo)
 
+        # 滑轨拖动逻辑
+        if is_dragging and scene in [0, 1]:
+            clamped_y = max(200, min(500, my))
+            ratio = 1.0 - (clamped_y - 200) / 300.0
+            interval = max(0.05, min(0.5, round(0.05 + ratio * 0.45, 2)))
+
         if scene == 2:
-            # Miss 检查
             for n in notes:
                 if not n.hit and not n.missed and elapsed > n.target_time + GOOD_RANGE:
                     n.missed, stats["miss"] = True, stats["miss"] + 1
-                    combo = 0 # Miss 连击归零
+                    combo = 0
                     if smart_line_enabled: current_line_color = COLOR_WHITE
                     effects.append(Effect(n.x, JUDGE_LINE_Y, COLOR_BAD, False))
             max_combo = max(max_combo, combo)
@@ -179,19 +187,18 @@ def main():
         screen.fill(COLOR_BLACK)
 
         if scene == 0:
-            # 齿轮按钮
             pygame.draw.circle(screen, COLOR_GRAY, (45, 45), 20, 2)
             pygame.draw.circle(screen, COLOR_GRAY, (45, 45), 8, 2)
             screen.blit(font_main.render("Press SPACE to Start", True, COLOR_WHITE), (370, 400))
+            screen.blit(font_main.render("Use Arrow Keys to adjust Interval", True, COLOR_GRAY), (330, 450))
         
-        elif scene == 4: # 设置页面
+        elif scene == 4:
             screen.blit(font_main.render("SETTINGS", True, COLOR_GOLD), (440, 150))
             status_text = "ON" if smart_line_enabled else "OFF"
             color = COLOR_PERFECT if smart_line_enabled else COLOR_GRAY
             screen.blit(font_main.render(f"Smart Judge Line: ", True, COLOR_WHITE), (350, 305))
             pygame.draw.rect(screen, color, (550, 300, 80, 40), 2)
             screen.blit(font_main.render(status_text, True, color), (570, 305))
-            screen.blit(font_main.render("[ Click to Toggle ]", True, COLOR_GRAY), (410, 360))
             pygame.draw.rect(screen, COLOR_WHITE, (450, 500, 100, 40), 1)
             screen.blit(font_main.render("BACK", True, COLOR_WHITE), (470, 505))
 
@@ -202,35 +209,31 @@ def main():
             screen.blit(font_main.render("2. Triple Burst (10s)", True, COLOR_BAD), (380, 410))
 
         elif scene == 2:
-            # 判定线
             line_c = current_line_color if smart_line_enabled else COLOR_WHITE
             pygame.draw.line(screen, line_c, (0, JUDGE_LINE_Y), (WINDOW_WIDTH, JUDGE_LINE_Y), 3)
             
-            # Combo 显示
             if combo >= 3:
                 c_num = font_combo_num.render(str(combo), True, COLOR_WHITE)
                 c_txt = font_combo_txt.render("COMBO", True, COLOR_WHITE)
                 screen.blit(c_num, (WINDOW_WIDTH//2 - c_num.get_width()//2, 150))
                 screen.blit(c_txt, (WINDOW_WIDTH//2 - c_txt.get_width()//2, 210))
 
-            # Note
             for n in notes:
                 if not (n.hit or n.missed) and elapsed >= n.spawn_time:
                     y = (elapsed - n.spawn_time) * FALL_SPEED
                     if y < WINDOW_HEIGHT:
                         pygame.draw.rect(screen, COLOR_NOTE, (n.x - NOTE_WIDTH//2, y, NOTE_WIDTH, NOTE_HEIGHT))
 
-            # 特效
             for e in effects:
                 if e.is_square:
                     s = 38
                     pts = [(e.x, e.y - s), (e.x + s, e.y), (e.x, e.y + s), (e.x - s, e.y)]
-                    pygame.draw.polygon(screen, e.color, pts, 2) # 中空菱形
-                    pygame.draw.circle(screen, e.color, (e.x, e.y), s//3, 2) # 中空内圆
+                    pygame.draw.polygon(screen, e.color, pts, 2)
+                    pygame.draw.circle(screen, e.color, (e.x, e.y), s//3, 2)
                 else:
                     pygame.draw.rect(screen, e.color, (e.x - NOTE_WIDTH//2, e.y, NOTE_WIDTH, NOTE_HEIGHT))
 
-        elif scene == 3: # 结算
+        elif scene == 3:
             y_p = 200
             for l, c in stats.items():
                 screen.blit(font_main.render(f"{l.upper()}: {c}", True, COLOR_WHITE), (430, y_p))
@@ -240,6 +243,7 @@ def main():
                 screen.blit(phi_font.render("φ", True, COLOR_GOLD), (470, 460))
             screen.blit(font_main.render("Press SPACE to Return", True, COLOR_GRAY), (380, 720))
 
+        # 侧边滑轨 UI
         if scene in [0, 1]:
             pygame.draw.rect(screen, (60, 60, 60), (930, 200, 10, 300))
             hy = 500 - ((interval - 0.05) / 0.45) * 300
