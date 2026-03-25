@@ -7,47 +7,51 @@ WINDOW_HEIGHT = 800
 JUDGE_LINE_Y = 700
 NOTE_WIDTH = 140
 NOTE_HEIGHT = 12
-FALL_SPEED = 1200  # 稍微加快了一点速度，更有手感
+FALL_SPEED = 1200 
 
-# 判定区间 (秒)
 PERFECT_RANGE = 0.08
 GOOD_RANGE = 0.16
 
-# 颜色
 COLOR_BLACK = (0, 0, 0)
 COLOR_WHITE = (255, 255, 255)
-COLOR_NOTE = (135, 206, 250)    # 蓝色
-COLOR_PERFECT = (255, 230, 0)   # 黄色
-COLOR_GOOD = (0, 191, 255)      # 亮蓝色
-COLOR_BAD = (255, 0, 0)         # 红色
-COLOR_GOLD = (255, 215, 0)      # 金色
+COLOR_NOTE = (135, 206, 250)
+COLOR_PERFECT = (255, 230, 0)
+COLOR_GOOD = (0, 191, 255)
+COLOR_BAD = (255, 0, 0)
+COLOR_GOLD = (255, 215, 0)
+COLOR_GRAY = (100, 100, 100)
 
 class Note:
-    def __init__(self, spawn_time, is_left):
-        self.spawn_time = spawn_time
+    def __init__(self, target_time, is_left):
+        self.target_time = target_time
+        # 计算生成时间：根据目标时间反推
+        self.spawn_time = target_time - (JUDGE_LINE_Y / FALL_SPEED)
         self.is_left = is_left
         self.hit = False
         self.missed = False
-        # 目标点击时间 = 生成时间 + 掉落到线上的时间
-        self.target_time = spawn_time + (JUDGE_LINE_Y / FALL_SPEED)
         self.x = 250 if is_left else 750
 
 class Effect:
     def __init__(self, x, y, color, is_square):
         self.x, self.y = x, y
         self.color = color
-        self.is_square = is_square # True 为 Perfect/Good 的菱形, False 为 Bad/Miss 的红键
-        self.timer = 0.15  # 效果持续时间
+        self.is_square = is_square
+        self.timer = 0.15
 
 def main():
     pygame.init()
     screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-    pygame.display.set_caption("Phigros Interaction Trainer")
+    pygame.display.set_caption("Phigros Rhythm Visualizer")
     clock = pygame.time.Clock()
-    font = pygame.font.SysFont("arial", 28)
-    phi_font = pygame.font.SysFont("georgia", 120, italic=True)
+    
+    # 字体加载，若系统无Arial则自动回退
+    try:
+        font = pygame.font.SysFont("arial", 28)
+        phi_font = pygame.font.SysFont("georgia", 120, italic=True)
+    except:
+        font = pygame.font.SysFont(None, 28)
+        phi_font = pygame.font.SysFont(None, 120)
 
-    # 状态变量
     interval = 0.2
     is_playing = False
     show_result = False
@@ -57,20 +61,19 @@ def main():
     effects = []
     stats = {"perf": 0, "good": 0, "bad": 0, "miss": 0}
     
-    last_spawn_time = 0
-    next_is_left = True
+    # 根据你的要求，等待时间改为 1.0s
+    START_DELAY = 1.0 
 
     running = True
     while running:
         current_time = time.time()
         elapsed = current_time - start_time if is_playing else 0
 
-        # --- 事件处理 ---
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             
-            # 滑轨交互
+            # 滑轨调整
             if event.type == pygame.MOUSEBUTTONDOWN and not is_playing and not show_result:
                 mx, my = pygame.mouse.get_pos()
                 if 900 < mx < 960 and 200 < my < 500:
@@ -86,15 +89,18 @@ def main():
                     elif not is_playing:
                         is_playing = True
                         start_time = time.time()
-                        last_spawn_time = 0
                         notes = []
                         effects = []
                         stats = {k: 0 for k in stats}
-                        next_is_left = True
+                        # 预生成 10s 的练习内容
+                        num_notes = int(10 / interval)
+                        for i in range(num_notes):
+                            target = START_DELAY + (i * interval)
+                            notes.append(Note(target, i % 2 == 0))
                     else:
                         is_playing = False
 
-                # 打击判定
+                # 判定
                 if is_playing and event.key in [pygame.K_f, pygame.K_j]:
                     is_left_key = (event.key == pygame.K_f)
                     for n in notes:
@@ -110,97 +116,103 @@ def main():
                                 stats["good"] += 1
                                 effects.append(Effect(n.x, JUDGE_LINE_Y, COLOR_GOOD, True))
                                 break
-                            elif elapsed < n.target_time and diff <= 0.3: 
+                            elif elapsed < n.target_time and diff <= 0.3:
                                 n.hit = True
                                 stats["bad"] += 1
-                                current_y = (elapsed - n.spawn_time) * FALL_SPEED
-                                effects.append(Effect(n.x, current_y, COLOR_BAD, False))
+                                # Bad 在当前下落高度闪现
+                                cur_y = (elapsed - n.spawn_time) * FALL_SPEED
+                                effects.append(Effect(n.x, cur_y, COLOR_BAD, False))
                                 break
 
-        # --- 游戏逻辑 ---
         if is_playing:
-            # 生成 Note (10秒练习)
-            if elapsed < 10.0 and elapsed - last_spawn_time >= interval:
-                notes.append(Note(elapsed, next_is_left))
-                next_is_left = not next_is_left
-                last_spawn_time = elapsed
-            
-            # 自动 Miss 判定
+            # Miss 检查
             for n in notes:
                 if not n.hit and not n.missed and elapsed > n.target_time + GOOD_RANGE:
                     n.missed = True
                     stats["miss"] += 1
                     effects.append(Effect(n.x, JUDGE_LINE_Y, COLOR_BAD, False))
             
-            # 结束判断
-            if elapsed > 10.5:
+            # 自动结束判定
+            if elapsed > 10.5 + START_DELAY:
                 is_playing = False
                 show_result = True
 
-        # 更新特效计时
+        # 特效计时器
         for e in effects[:]:
             e.timer -= 0.016
-            if e.timer <= 0:
-                effects.remove(e)
+            if e.timer <= 0: effects.remove(e)
 
         # --- 渲染 ---
-        # 背景闪烁逻辑
-        if is_playing:
-            # 计算距离上一个节拍的时间，生成 0 到 1 之间的系数
-            time_since_beat = elapsed % interval
-            # 亮度在节拍点最高(40)，然后随时间线性衰减到 0
-            # 衰减速度可以通过下面的数字调节
-            flash_intensity = max(0, int(40 - (time_since_beat / interval) * 40))
-            screen.fill((flash_intensity, flash_intensity, flash_intensity))
-        else:
-            screen.fill(COLOR_BLACK)
+        screen.fill(COLOR_BLACK)
 
-        # 1. 判定线
+        # 1. 顶部节奏滑轨
+        slider_x, slider_y, slider_w = 300, 100, 400
+        pygame.draw.rect(screen, COLOR_GRAY, (slider_x, slider_y, slider_w, 4))
+        pygame.draw.circle(screen, COLOR_WHITE, (slider_x, slider_y + 2), 6)
+        pygame.draw.circle(screen, COLOR_WHITE, (slider_x + slider_w, slider_y + 2), 6)
+        
+        if is_playing:
+            adj_elapsed = elapsed - START_DELAY
+            cycle_pos = (adj_elapsed % (2 * interval)) / (2 * interval)
+            # 线性摆动逻辑：0-0.5向右，0.5-1向左
+            if cycle_pos < 0.5:
+                ball_ratio = cycle_pos * 2
+            else:
+                ball_ratio = 2.0 - (cycle_pos * 2)
+            
+            ball_x = slider_x + ball_ratio * slider_w
+            pygame.draw.circle(screen, COLOR_PERFECT, (int(ball_x), slider_y + 2), 12)
+
+        # 2. 判定线
         pygame.draw.line(screen, COLOR_WHITE, (0, JUDGE_LINE_Y), (WINDOW_WIDTH, JUDGE_LINE_Y), 3)
 
-        # 2. 渲染下落 Note
+        # 3. 渲染 Note
         if is_playing:
             for n in notes:
                 if n.hit or n.missed: continue
-                y = (elapsed - n.spawn_time) * FALL_SPEED
-                if y < WINDOW_HEIGHT:
-                    rect = pygame.Rect(n.x - NOTE_WIDTH//2, y, NOTE_WIDTH, NOTE_HEIGHT)
-                    pygame.draw.rect(screen, COLOR_NOTE, rect)
+                if elapsed >= n.spawn_time:
+                    y = (elapsed - n.spawn_time) * FALL_SPEED
+                    if y < WINDOW_HEIGHT:
+                        rect = pygame.Rect(n.x - NOTE_WIDTH//2, y, NOTE_WIDTH, NOTE_HEIGHT)
+                        pygame.draw.rect(screen, COLOR_NOTE, rect)
 
-        # 3. 渲染特效
+        # 4. 渲染特效 (修正后的逻辑)
         for e in effects:
             if e.is_square:
-                size = 35
-                pts = [(e.x, e.y-size), (e.x+size, e.y), (e.x, e.y+size), (e.x-size, e.y)]
+                s = 35 # 边长相关参数
+                # 绘制旋转45度的正方形（菱形）
+                pts = [(e.x, e.y - s), (e.x + s, e.y), (e.x, e.y + s), (e.x - s, e.y)]
                 pygame.draw.polygon(screen, e.color, pts)
             else:
+                # 绘制红色判定失败条
                 rect = pygame.Rect(e.x - NOTE_WIDTH//2, e.y, NOTE_WIDTH, NOTE_HEIGHT)
                 pygame.draw.rect(screen, e.color, rect)
 
-        # 4. 滑轨 UI
+        # 5. 右侧滑轨 UI
         pygame.draw.rect(screen, (60, 60, 60), (930, 200, 10, 300))
-        handle_y = 500 - ((interval - 0.05) / 0.45) * 300
-        pygame.draw.circle(screen, COLOR_WHITE, (935, int(handle_y)), 10)
+        hy = 500 - ((interval - 0.05) / 0.45) * 300
+        pygame.draw.circle(screen, COLOR_WHITE, (935, int(hy)), 10)
         screen.blit(font.render(f"{interval:.2f}s", True, COLOR_WHITE), (910, 520))
 
-        # 5. 提示
         if not is_playing and not show_result:
-            msg = font.render("Press SPACE to Start Practice", True, (200, 200, 200))
-            screen.blit(msg, (WINDOW_WIDTH//2 - 160, WINDOW_HEIGHT//2))
+            screen.blit(font.render("Press SPACE to Start", True, (200, 200, 200)), (380, 400))
 
         # 6. 结算页面
         if show_result:
             overlay = pygame.Surface((WINDOW_WIDTH, WINDOW_HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 200))
             screen.blit(overlay, (0, 0))
-            y_pos = 220
-            for label, count in stats.items():
-                txt = font.render(f"{label.upper()}: {count}", True, COLOR_WHITE)
-                screen.blit(txt, (430, y_pos))
-                y_pos += 45
+            y_p = 220
+            for l, c in stats.items():
+                txt = font.render(f"{l.upper()}: {c}", True, COLOR_WHITE)
+                screen.blit(txt, (430, y_p))
+                y_p += 45
+            
             if stats["good"] == 0 and stats["bad"] == 0 and stats["miss"] == 0 and stats["perf"] > 0:
-                screen.blit(phi_font.render("φ", True, COLOR_GOLD), (470, 430))
-            screen.blit(font.render("Press SPACE to Return", True, (150, 150, 150)), (WINDOW_WIDTH//2 - 120, 700))
+                phi_txt = phi_font.render("φ", True, COLOR_GOLD)
+                screen.blit(phi_txt, (470, 430))
+            
+            screen.blit(font.render("Press SPACE to Return", True, (150, 150, 150)), (380, 700))
 
         pygame.display.flip()
         clock.tick(120)
