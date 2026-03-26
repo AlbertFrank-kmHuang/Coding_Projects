@@ -8,12 +8,10 @@ WINDOW_HEIGHT = 800
 JUDGE_LINE_Y = 700
 FALL_SPEED = 1200 
 
-# 判定范围
 PERFECT_RANGE = 0.08
 GOOD_RANGE = 0.16
 
-# 常量定义
-NOTE_HEIGHT = 12  # <--- 修复：确保该常量在全局定义
+NOTE_HEIGHT = 12
 COLOR_BLACK = (0, 0, 0)
 COLOR_WHITE = (255, 255, 255)
 COLOR_NOTE = (135, 206, 250)
@@ -24,32 +22,34 @@ COLOR_GOLD = (255, 215, 0)
 COLOR_GRAY = (100, 100, 100)
 COLOR_TRACK_LINE = (60, 60, 60)
 
-# 六指模式专属配置
+# 模式专属配置
 TRACK_COUNT = 6
 TRACK_WIDTH = WINDOW_WIDTH / TRACK_COUNT
 SIX_NOTE_WIDTH = int(TRACK_WIDTH * 0.8)
 SIX_KEYS = [pygame.K_s, pygame.K_d, pygame.K_f, pygame.K_j, pygame.K_k, pygame.K_l]
 SIX_NAMES = ["S", "D", "F", "J", "K", "L"]
 
-# 双指模式专属配置
 TWO_NOTE_WIDTH = 140
-TWO_KEYS = {pygame.K_f: 0, pygame.K_j: 5} # 逻辑上映射到第0和第5轨
+TWO_KEYS = {pygame.K_f: 0, pygame.K_j: 5}
+
+# 单指模式：映射到虚拟轨道 3 (中间)
+ONE_NOTE_WIDTH = 160
 
 class Note:
-    def __init__(self, target_time, track_idx, is_six_finger=False):
+    def __init__(self, target_time, track_idx, mode):
         self.target_time = target_time
         self.spawn_time = target_time - (JUDGE_LINE_Y / FALL_SPEED)
         self.track_idx = track_idx
-        self.is_six = is_six_finger
         self.hit = False
         self.missed = False
         
-        # 根据模式分配初始位置和宽度
-        if is_six_finger:
+        if mode == "six_finger":
             self.x = int(track_idx * TRACK_WIDTH + TRACK_WIDTH / 2)
             self.width = SIX_NOTE_WIDTH
-        else:
-            # 双指模式保持原位：左250，右750
+        elif mode == "single":
+            self.x = 500 # 屏幕中心
+            self.width = ONE_NOTE_WIDTH
+        else: # normal / custom
             self.x = 250 if track_idx == 0 else 750
             self.width = TWO_NOTE_WIDTH
 
@@ -65,8 +65,7 @@ def generate_notes(mode, base_interval, delay):
     notes = []
     if mode == "normal":
         for i in range(int(10 / base_interval)):
-            # 基础模式：左右交替
-            notes.append(Note(delay + (i * base_interval), 0 if i % 2 == 0 else 5, False))
+            notes.append(Note(delay + (i * base_interval), 0 if i % 2 == 0 else 5, mode))
     elif mode == "custom":
         timeline = [(0.0, 2.0, 0.5), (2.0, 3.0, None), (3.0, 5.0, 0.5), (5.0, 6.0, None), (6.0, 10.0, 0.5)]
         track_toggle = 0
@@ -74,15 +73,19 @@ def generate_notes(mode, base_interval, delay):
             if mult is None: continue
             curr, seg_end = delay + start, delay + end
             while curr < seg_end:
-                notes.append(Note(curr, 0 if track_toggle % 2 == 0 else 5, False))
+                notes.append(Note(curr, 0 if track_toggle % 2 == 0 else 5, mode))
                 curr += base_interval * mult
                 track_toggle += 1
     elif mode == "six_finger":
         duration, curr = 10.0, delay
         while curr < delay + duration:
-            # 六轨随机
-            notes.append(Note(curr, random.randint(0, 5), True))
+            notes.append(Note(curr, random.randint(0, 5), mode))
             curr += base_interval
+    elif mode == "single":
+        # 新增：单指模式，间隔翻倍
+        actual_interval = base_interval * 2
+        for i in range(int(10 / actual_interval)):
+            notes.append(Note(delay + (i * actual_interval), 3, mode)) # track_idx 设为 3 方便逻辑判断
     return notes
 
 def main():
@@ -91,14 +94,12 @@ def main():
     pygame.display.set_caption("Phigros Hybrid Trainer")
     clock = pygame.time.Clock()
     
-    # 字体加载
     font_main = pygame.font.SysFont("arial", 28)
     font_small = pygame.font.SysFont("arial", 22, bold=True)
     font_combo_num = pygame.font.SysFont("arial", 70, bold=True)
     font_combo_txt = pygame.font.SysFont("arial", 24, bold=True)
     phi_font = pygame.font.SysFont("georgia", 120, italic=True)
 
-    # 状态变量
     scene = 0 
     smart_line_enabled = True
     is_dragging = False 
@@ -130,9 +131,10 @@ def main():
                     elif 450 < mx < 550 and 500 < my < 550: scene = 0
                 elif scene == 1:
                     if 350 < mx < 650:
-                        if 250 < my < 300: current_mode, scene = "normal", 2
-                        elif 350 < my < 400: current_mode, scene = "custom", 2
-                        elif 450 < my < 500: current_mode, scene = "six_finger", 2
+                        if 200 < my < 250: current_mode, scene = "single", 2
+                        elif 280 < my < 330: current_mode, scene = "normal", 2
+                        elif 360 < my < 410: current_mode, scene = "custom", 2
+                        elif 440 < my < 490: current_mode, scene = "six_finger", 2
                         if scene == 2:
                             start_time = time.time()
                             notes = generate_notes(current_mode, interval, START_DELAY)
@@ -150,12 +152,13 @@ def main():
                     elif scene in [3, 4]: scene = 0
                     elif scene == 2: scene = 0
 
-                # 核心判定逻辑
                 if scene == 2:
                     target_idx = -1
                     if current_mode == "six_finger" and event.key in SIX_KEYS:
                         target_idx = SIX_KEYS.index(event.key)
-                    elif current_mode != "six_finger" and event.key in TWO_KEYS:
+                    elif current_mode == "single" and event.key in [pygame.K_f, pygame.K_j]:
+                        target_idx = 3 # 对应单指模式逻辑轨道
+                    elif current_mode in ["normal", "custom"] and event.key in TWO_KEYS:
                         target_idx = TWO_KEYS[event.key]
                     
                     if target_idx != -1:
@@ -178,12 +181,10 @@ def main():
                                     break
                         max_combo = max(max_combo, combo)
 
-        # 间隔滑轨更新
         if is_dragging and scene in [0, 1]:
             interval = max(0.05, min(0.5, round(0.05 + (1.0 - (max(200, min(500, my)) - 200) / 300.0) * 0.45, 2)))
 
         if scene == 2:
-            # Miss 检查
             for n in notes:
                 if not n.hit and not n.missed and elapsed > n.target_time + GOOD_RANGE:
                     n.missed, stats["miss"], combo = True, stats["miss"] + 1, 0
@@ -192,12 +193,10 @@ def main():
             max_combo = max(max_combo, combo)
             if elapsed > 10.5 + START_DELAY: scene = 3
 
-        # 特效计时
         for e in effects[:]:
             e.timer -= 0.016
             if e.timer <= 0: effects.remove(e)
 
-        # --- 开始渲染 ---
         screen.fill(COLOR_BLACK)
 
         if scene == 0:
@@ -216,48 +215,43 @@ def main():
             screen.blit(font_main.render("BACK", True, COLOR_WHITE), (470, 505))
         
         elif scene == 1:
-            modes = [("1. Default Mode", 250), ("2. Triple Burst", 350), ("3. 6-Finger Coordination", 450)]
+            modes = [("0. Single Finger Mode", 200), ("1. Default Mode", 280), ("2. Triple Burst", 360), ("3. 6-Finger Coordination", 440)]
             for text, y in modes:
                 pygame.draw.rect(screen, (40, 40, 40), (350, y, 300, 50))
-                color = (100, 255, 100) if "6-Finger" in text else COLOR_WHITE
+                color = (200, 200, 255) if "Single" in text else (COLOR_WHITE if "6-Finger" not in text else (100, 255, 100))
                 screen.blit(font_main.render(text, True, color), (360, y+10))
         
         elif scene == 2:
-            # 1. 判定线
             line_c = current_line_color if smart_line_enabled else COLOR_WHITE
             pygame.draw.line(screen, line_c, (0, JUDGE_LINE_Y), (WINDOW_WIDTH, JUDGE_LINE_Y), 4)
             
-            # 2. 差异化 UI
             if current_mode == "six_finger":
-                # 绘制全屏轨道线
                 for i in range(TRACK_COUNT + 1):
                     lx = int(i * TRACK_WIDTH)
                     pygame.draw.line(screen, COLOR_TRACK_LINE, (lx, 0), (lx, JUDGE_LINE_Y), 1)
-                # 字母提示
                 for i in range(TRACK_COUNT):
                     cx = int(i * TRACK_WIDTH + TRACK_WIDTH / 2)
                     txt = font_small.render(SIX_NAMES[i], True, (100, 100, 100))
                     screen.blit(txt, (cx - txt.get_width()//2, JUDGE_LINE_Y + 15))
+            elif current_mode == "single":
+                txt = font_small.render("F / J", True, (120, 120, 120))
+                screen.blit(txt, (500 - txt.get_width()//2, JUDGE_LINE_Y + 15))
             else:
-                # 双指模式提示
                 for x_pos, name in [(250, "F"), (750, "J")]:
                     txt = font_small.render(name, True, (100, 100, 100))
                     screen.blit(txt, (x_pos - txt.get_width()//2, JUDGE_LINE_Y + 15))
 
-            # 3. Combo
             if combo >= 3:
                 num = font_combo_num.render(str(combo), True, COLOR_WHITE)
                 screen.blit(num, (WINDOW_WIDTH//2 - num.get_width()//2, 160))
                 screen.blit(font_combo_txt.render("COMBO", True, COLOR_WHITE), (WINDOW_WIDTH//2 - 40, 230))
 
-            # 4. Notes 渲染
             for n in notes:
                 if not (n.hit or n.missed) and elapsed >= n.spawn_time:
                     y = (elapsed - n.spawn_time) * FALL_SPEED
                     if y < WINDOW_HEIGHT:
                         pygame.draw.rect(screen, COLOR_NOTE, (n.x - n.width//2, y, n.width, NOTE_HEIGHT))
             
-            # 5. 特效渲染
             for e in effects:
                 if e.is_square:
                     s = 40
@@ -276,7 +270,6 @@ def main():
                 screen.blit(phi_font.render("φ", True, COLOR_GOLD), (470, 460))
             screen.blit(font_main.render("Press SPACE to Return", True, (150, 150, 150)), (380, 720))
 
-        # 主页滑轨展示
         if scene in [0, 1]:
             pygame.draw.rect(screen, (60, 60, 60), (930, 200, 10, 300))
             hy = 500 - ((interval - 0.05) / 0.45) * 300
