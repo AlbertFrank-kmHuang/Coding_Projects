@@ -17,12 +17,16 @@ set(PROJECT_SOURCES
         mainwindow.cpp
         mainwindow.h
         mainwindow.ui
+        Cell.h
+        Cell.cpp
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_add_executable(Minesweeper
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
+        Cell.cpp
+        Cell.h
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET Minesweeper APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
