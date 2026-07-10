@@ -25,16 +25,17 @@ private:
     QPushButton* startButton;
     int gridHeight = 16;
     int gridLength = 30;
+    int mineNumber = 99;
 
     //布局
-    QWidget *central;
-    QVBoxLayout *mainVerticalLayout;
-    QHBoxLayout *buttonsLayout;
-    QGridLayout *gridLayout = nullptr;
+    QWidget *central = nullptr;
+
 
 
 
 private slots:
     void generateGrid();
+
+    void onCellClicked();
 };
 #endif // MAINWINDOW_H
