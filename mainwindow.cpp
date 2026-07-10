@@ -1,38 +1,22 @@
 #include "mainwindow.h"
 #include "./ui_mainwindow.h"
+#include "Cell.h"
 
 #include <QPushButton>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
+#include <algorithm>
+#include <random>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
-    , startButton(new QPushButton("!!!", this))
-    , central(new QWidget(this))
-    , mainVerticalLayout(new QVBoxLayout(central))
-    , buttonsLayout(new QHBoxLayout)
-    , gridLayout(new QGridLayout)
+    , startButton(new QPushButton("New Game", this))
 {
     ui->setupUi(this);
-
-    startButton->setFixedSize(30, 30);
-
-    //设置左上右下边距
-    mainVerticalLayout->setContentsMargins(10, 5, 10, 5);
-
-    //添加startButton到控件
-    buttonsLayout->addWidget(startButton);
-    buttonsLayout->setAlignment(Qt::AlignHCenter);//水平居中
-    //将水平布局插入到竖直布局
-    mainVerticalLayout->addLayout(buttonsLayout);
+    startButton->setFixedSize(90, 30);
 
     generateGrid();
-
-    //在竖直布局里加入伸展，把startButton顶上去
-    mainVerticalLayout->addStretch();
-
-    setCentralWidget(central);
 
     connect(startButton, &QPushButton::clicked
             , this, &MainWindow::generateGrid);
@@ -45,21 +29,93 @@ MainWindow::~MainWindow()
 }
 
 void MainWindow::generateGrid(){
-    if (gridLayout) {
-        delete gridLayout;
-        gridLayout = nullptr;
+    if (central) {
+        startButton->setParent(this);
+        delete central;
+        central = nullptr;
     }
 
-    gridLayout = new QGridLayout();
-    gridLayout->setSpacing(3);
+    central = new QWidget(this);
+    QVBoxLayout *mainVerticalLayout = new QVBoxLayout(central);
+    mainVerticalLayout->setContentsMargins(10, 5, 10, 5); //左上右下margin
 
-    for (int i=0; i<gridHeight; ++i) {
-        for (int j=0; j<gridLength; ++j) {
-            QPushButton *cell = new QPushButton();
-            cell->setFixedSize(10, 10);
-            cell->setText("");
+    QHBoxLayout *buttonsLayout = new QHBoxLayout();
+    buttonsLayout->addWidget(startButton);
+    buttonsLayout->setAlignment(Qt::AlignHCenter);
+    mainVerticalLayout->addLayout(buttonsLayout);
+
+    QGridLayout *gridLayout = new QGridLayout();
+    gridLayout->setSpacing(0);
+    gridLayout->setVerticalSpacing(12);
+
+    //set mines
+    std::vector<bool> mines (gridHeight * gridLength, false);
+    for (int i=0; i < mineNumber; ++i) {
+        mines[i] = true;
+    }
+    std::random_device rd;
+    std::mt19937 randomGenerator(rd());
+    std::shuffle(mines.begin(), mines.end(), randomGenerator);
+
+    for (int i=0; i < gridHeight; ++i) {
+        for (int j=0; j < gridLength; ++j) {
+            Cell *cell = new Cell(i, j, this);
+
+            bool whetherMine = mines[i * gridLength + j];
+            cell->setMine(whetherMine);
+
+            connect(cell, &Cell::clicked, this, &MainWindow::onCellClicked);
             gridLayout->addWidget(cell, i, j);
         }
     }
-    mainVerticalLayout->insertLayout(1, gridLayout);
+
+    for (int i=0; i < gridHeight; ++i) {
+        for (int j=0; j < gridLength; ++j) {
+            int countAround = 0;
+            for (int m=std::max(0, i-1); m <= std::min(gridHeight-1, i+1); ++m) {
+                for (int n=std::max(0, j-1); n <= std::min(gridLength-1, j+1); ++n) {
+                    if (i == m && j == n) continue;
+                    if (qobject_cast<Cell*>(gridLayout->itemAtPosition(m, n)->widget())->isMine()) {
+                        countAround++;
+                    }
+                }
+            }
+        }
+    }
+    mainVerticalLayout->addLayout(gridLayout);
+
+    mainVerticalLayout->addStretch();
+
+    setCentralWidget(central);
+
+    central->layout()->setSizeConstraint(QLayout::SetFixedSize);
+    this->adjustSize();
 }
+
+void MainWindow::onCellClicked() {
+    Cell *clickedCell = qobject_cast<Cell*>(sender());
+
+    if (clickedCell) {
+        if (clickedCell->isOpened()) return ;
+        clickedCell->setOpened(true);
+    }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
