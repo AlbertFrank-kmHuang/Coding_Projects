@@ -42,6 +42,6 @@ private:
 private slots:
     void onCellClicked();
 
-    void generateGridCover();
+    void onStartButtonClicked();
 };
 #endif // MAINWINDOW_H
