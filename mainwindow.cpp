@@ -17,10 +17,10 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
     startButton->setFixedSize(90, 30);
 
-    generateGridCover();
+    onStartButtonClicked();
 
     connect(startButton, &QPushButton::clicked
-            , this, &MainWindow::generateGridCover);
+            , this, &MainWindow::onStartButtonClicked);
 
 }
 
@@ -29,7 +29,7 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-void MainWindow::generateGridCover() {
+void MainWindow::onStartButtonClicked() {
     if (central) {
         startButton->setParent(this);
         delete central;
@@ -85,8 +85,6 @@ void MainWindow::onCellClicked() {
             for (int j=std::max(0, startCol-1);
                  j <= std::min(gridLength-1, startCol+1);
                  ++j) {
-                if (i == startRow && j == startCol) continue;
-
                 safeZone.push_back({i, j});
             }
         }
@@ -116,14 +114,41 @@ void MainWindow::onCellClicked() {
                 Cell* currentCell = qobject_cast<Cell*>
                     (gridLayout->itemAtPosition(i, j)->widget());
                 if (!isSafe) {
-                    currentCell->setMine(true);
+                    currentCell->setMine(allMines[index]);
                     index++;
                 }else{
                     currentCell->setMine(false);
                 }
             }
         }
+
+        for (int i=0; i<gridHeight; ++i) {
+            for (int j=0; j<gridLength; ++j) {
+                Cell* currentCell = qobject_cast<Cell*>
+                    (gridLayout->itemAtPosition(i, j)->widget());
+
+                int countArounds = 0;
+                for (int m = std::max(0, i-1)
+                     ; m <= std::min(gridHeight-1, i+1)
+                     ;++m) {
+                    for (int n = std::max(0, j-1)
+                         ;n <= std::min(gridLength-1, j+1)
+                         ; ++n) {
+                        if (i == m && j == n) continue;
+                        Cell* aroundCell = qobject_cast<Cell*>
+                            (gridLayout->itemAtPosition(m, n)->widget());
+                        if (aroundCell->isMine()) {
+                            countArounds++;
+                        }
+                    }
+                }
+
+                currentCell->setMinesAround(countArounds);
+            }
+        }
     }
+
+
 
     if (clickedCell) {
         if (clickedCell->isOpened()) return ;
@@ -173,9 +198,7 @@ void MainWindow::expand(int startRow, int startCol) {
             }
         }
     }
-
 }
-
 
 
 
