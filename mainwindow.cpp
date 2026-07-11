@@ -46,7 +46,7 @@ void MainWindow::generateGrid(){
 
     QGridLayout *gridLayout = new QGridLayout();
     gridLayout->setSpacing(0);
-    gridLayout->setVerticalSpacing(12);
+    gridLayout->setVerticalSpacing(0);
 
     //set mines
     std::vector<bool> mines (gridHeight * gridLength, false);
@@ -79,17 +79,16 @@ void MainWindow::generateGrid(){
                         countAround++;
                     }
                 }
+                qobject_cast<Cell*>(gridLayout->itemAtPosition(i, j)->widget())->setMinesAround(countAround);
             }
         }
     }
+
     mainVerticalLayout->addLayout(gridLayout);
 
     mainVerticalLayout->addStretch();
 
     setCentralWidget(central);
-
-    central->layout()->setSizeConstraint(QLayout::SetFixedSize);
-    this->adjustSize();
 }
 
 void MainWindow::onCellClicked() {
@@ -101,7 +100,6 @@ void MainWindow::onCellClicked() {
     }
 
 }
-
 
 
 
