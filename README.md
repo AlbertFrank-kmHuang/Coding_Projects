@@ -1,1 +1,1 @@
-Hello! My name's Kaiming Huang(AF/AlbertFrank), an undergraduate student at Peking University.
+Hello! I'm Kaiming Huang(AF / AlbertFrank), an undergraduate student at Peking University.
